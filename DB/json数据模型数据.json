@@ -1,0 +1,567 @@
+{"jsonNetworkModel":
+{
+    "junction": [
+        {
+            "updatedTime": 1773195919000,
+            "flowSelect": "Liquid flowrate",
+            "featureName": "B2",
+            "isDelete": 0,
+            "createdTime": 1770201397000,
+            "asSource": true,
+            "createdUser": "user",
+            "featureId": "point-1770201046882-352"
+        }
+    ],
+    "choke": [],
+    "twoPhase": [],
+    "heat": [],
+    "sink": [
+        {
+            "updatedTime": 1774585658000,
+            "flowSelect": "Liquid flowrate",
+            "featureName": "流出",
+            "isDelete": 0,
+            "createdTime": 1770196897000,
+            "pressure": 3000000,
+            "isActive": true,
+            "createdUser": "user",
+            "featureId": "point-1770196889326-277"
+        }
+    ],
+    "pipeLine": [
+        {
+            "outerPipeWallThickness": 0.0127,
+            "insideCoefficient": "Include",
+            "flowMode": "Simple",
+            "uValueInput": "Specify",
+            "uValueType": "Insulated",
+            "mapPopulated": false,
+            "eleDifference": 0,
+            "outsideDiameter": 0.1143,
+            "startPointId": "point-1770196884620-529",
+            "measuredDifference": 15.24,
+            "roughness": 0.000045719999999999996,
+            "wallThickness": 0.0060198,
+            "createdTime": 1770201237000,
+            "heatCoefficient": 1.135653,
+            "windSpeed": 2.57222,
+            "createdUser": "user",
+            "endPointId": "point-1770201046882-352",
+            "featureId": "line-1770201053305-435",
+            "coatingTable": [],
+            "updatedTime": 1774580243000,
+            "rateOfUndulations": 0,
+            "featureName": "B4FL",
+            "isDelete": 0,
+            "groundConductivity": 0.774694,
+            "insideDiameter": 0.1022604,
+            "profileTable": [
+                {
+                    "elevation": 0,
+                    "horDistance": 0,
+                    "detailedId": "b0c577cda1f143cd9f27f7ea1938232d",
+                    "projectEquipmentsId": "line-1770201053305-435"
+                },
+                {
+                    "elevation": 0,
+                    "horDistance": 15.24,
+                    "detailedId": "8bb51fd3320a4698a09a4660afa33afb",
+                    "projectEquipmentsId": "line-1770201053305-435"
+                }
+            ],
+            "environment": "Land",
+            "ambTemperature": 280.3722,
+            "pipeConductivity": 60.55,
+            "horizontalDifference": 15.24,
+            "flowType": "Pipe"
+        },
+        {
+            "outerPipeWallThickness": 0.0127,
+            "insideCoefficient": "Include",
+            "flowMode": "Simple",
+            "uValueInput": "Specify",
+            "uValueType": "Insulated",
+            "mapPopulated": false,
+            "eleDifference": 0,
+            "outsideDiameter": 0.168275,
+            "startPointId": "point-1770196893352-250",
+            "measuredDifference": 609.6,
+            "roughness": 0.000045719999999999996,
+            "wallThickness": 0.007112,
+            "createdTime": 1770201371000,
+            "heatCoefficient": 1.135653,
+            "windSpeed": 2.57222,
+            "createdUser": "user",
+            "endPointId": "point-1770201046882-352",
+            "featureId": "line-1770201050462-804",
+            "coatingTable": [],
+            "updatedTime": 1774344404000,
+            "rateOfUndulations": 0,
+            "featureName": "BL1",
+            "isDelete": 0,
+            "groundConductivity": 0.774694,
+            "insideDiameter": 0.154051,
+            "profileTable": [
+                {
+                    "elevation": 0,
+                    "horDistance": 0,
+                    "detailedId": "0dd8ba3872e84f2e89efa2d23477311c",
+                    "projectEquipmentsId": "line-1770201050462-804"
+                },
+                {
+                    "elevation": 0,
+                    "horDistance": 609.6,
+                    "detailedId": "6f74ebf9cdf7417d84cf7da0f9466ced",
+                    "projectEquipmentsId": "line-1770201050462-804"
+                }
+            ],
+            "environment": "Land",
+            "ambTemperature": 280.3722,
+            "pipeConductivity": 60.55,
+            "horizontalDifference": 609.6,
+            "flowType": "Pipe"
+        },
+        {
+            "outerPipeWallThickness": 0.0127,
+            "insideCoefficient": "Include",
+            "flowMode": "Simple",
+            "uValueInput": "Specify",
+            "uValueType": "Insulated",
+            "mapPopulated": false,
+            "eleDifference": 0,
+            "outsideDiameter": 0.168275,
+            "startPointId": "point-1770201046882-352",
+            "measuredDifference": 1524,
+            "roughness": 0.000045719999999999996,
+            "wallThickness": 0.007112,
+            "createdTime": 1770201483000,
+            "heatCoefficient": 1.135653,
+            "windSpeed": 2.57222,
+            "createdUser": "user",
+            "endPointId": "point-1770196889326-277",
+            "featureId": "line-1770201055503-113",
+            "coatingTable": [],
+            "updatedTime": 1774344410000,
+            "rateOfUndulations": 0,
+            "featureName": "BL2",
+            "isDelete": 0,
+            "groundConductivity": 0.774694,
+            "insideDiameter": 0.154051,
+            "profileTable": [
+                {
+                    "elevation": 0,
+                    "horDistance": 0,
+                    "detailedId": "7531949c62554717bd76075b190b414e",
+                    "projectEquipmentsId": "line-1770201055503-113"
+                },
+                {
+                    "elevation": 0,
+                    "horDistance": 1524,
+                    "detailedId": "ccba2d3cca5f43f2933857e180c0f064",
+                    "projectEquipmentsId": "line-1770201055503-113"
+                }
+            ],
+            "environment": "Land",
+            "ambTemperature": 280.3722,
+            "pipeConductivity": 60.55,
+            "horizontalDifference": 1524,
+            "flowType": "Pipe"
+        }
+    ],
+    "multiphase": [],
+    "source": [
+        {
+            "updatedTime": 1774586244000,
+            "flowSelect": "Liquid flowrate",
+            "featureName": "流入6",
+            "isDelete": 0,
+            "black_oil_set": [
+                {
+                    "blackOilModelSetId": "7dd486bb189c49c0989fdef315c33ae9",
+                    "deadOilViscosityCorrelation": "Beggs & Robinson",
+                    "liveOilViscosityCorrelation": "Chew & Connally",
+                    "undersaturatedOilViscosityCorrelation": "Vasquez & Beggs",
+                    "fluidId": "fluid-1773195843113-791"
+                }
+            ],
+            "isActive": true,
+            "updatedUser": "user",
+            "fluidId": "fluid-1773195843113-791",
+            "usePqCurve": true,
+             "pqTable": [
+                {
+                    "liquidFlowrate": 0.009259259,
+                    "pqCurveId": "953fa09f216349dfb83efdb4dd00cf95",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 3000000
+                },
+                {
+                    "liquidFlowrate": 0.008101852,
+                    "pqCurveId": "aee54e60cb694fe29adf0e2414c97d7d",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 4000000
+                },
+                {
+                    "liquidFlowrate": 0.001157407,
+                    "pqCurveId": "ded564326cd949f39f968a1d5090ce74",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 10000000
+                },
+                {
+                    "liquidFlowrate": 0.01157407,
+                    "pqCurveId": "1e0581c524e94da6bffdd6423a9086e3",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 1000000
+                },
+                {
+                    "liquidFlowrate": 0.01041667,
+                    "pqCurveId": "e89c9d3db4f5474aaddd20af926aa09b",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 2000000
+                }
+            ],
+            "temperature": 313,
+            "createdTime": 1770196897000,
+            "fluid": {
+                "updatedTime": 1774587870000,
+                "isDelete": 0,
+                "createdTime": 1773195843000,
+                "fluidName": "gramma",
+                "updatedUser": "user",
+                "fluidId": "fluid-1773195843113-791",
+                "projectId": "project-1770196854355-500",
+                "createdUser": "user"
+            },
+            "black_oil": [
+                {
+                    "waterThermalConductivity": 0.6055,
+                    "gasSpecificHeatCapacity": 2302.74,
+                    "oilApi": 46.18,
+                    "undersaturatedOilViscosityCorrelation": "Vasquez & Beggs",
+                    "fluidId": "fluid-1773195843113-791",
+                    "gasSpecificGravity": 0.72,
+                    "waterSpecificGravity": 1.02,
+                    "deadOilViscosityCorrelation": "Beggs & Robinson",
+                    "oilSpecificHeatCapacity": 1884.06,
+                    "waterSpecificHeatCapacity": 4186.8,
+                    "blackOilId": "a2fd16196cc84de1b60fb9be06f70041",
+                    "gasThermalConductivity": 0.0346,
+                    "oilThermalConductivity": 0.1384,
+                    "fluidName": "gramma",
+                    "liveOilViscosityCorrelation": "Chew & Connally",
+                    "waterRatio": 0.72,
+                    "gasOilRadio": 60.23
+                }
+            ],
+            "createdUser": "user",
+            "featureId": "point-1770196884620-529"
+        },
+        {
+            "updatedTime": 1774585653000,
+            "flowSelect": "Liquid flowrate",
+            "featureName": "流入7",
+            "isDelete": 0,
+            "black_oil_set": [
+                {
+                    "blackOilModelSetId": "7dd486bb189c49c0989fdef315c33ae9",
+                    "deadOilViscosityCorrelation": "Beggs & Robinson",
+                    "liveOilViscosityCorrelation": "Chew & Connally",
+                    "undersaturatedOilViscosityCorrelation": "Vasquez & Beggs",
+                    "fluidId": "fluid-1773195843113-791"
+                }
+            ],
+            "isActive": true,
+            "updatedUser": "user",
+            "fluidId": "fluid-1773195843113-791",
+            "usePqCurve": true,
+             "pqTable": [
+                {
+                    "liquidFlowrate": 0.009259259,
+                    "pqCurveId": "953fa09f216349dfb83efdb4dd00cf95",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 3000000
+                },
+                {
+                    "liquidFlowrate": 0.008101852,
+                    "pqCurveId": "aee54e60cb694fe29adf0e2414c97d7d",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 4000000
+                },
+                {
+                    "liquidFlowrate": 0.001157407,
+                    "pqCurveId": "ded564326cd949f39f968a1d5090ce74",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 10000000
+                },
+                {
+                    "liquidFlowrate": 0.01157407,
+                    "pqCurveId": "1e0581c524e94da6bffdd6423a9086e3",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 1000000
+                },
+                {
+                    "liquidFlowrate": 0.01041667,
+                    "pqCurveId": "e89c9d3db4f5474aaddd20af926aa09b",
+                    "temperature": 313,
+                    "projectEquipmentsId": "point-1770196884620-529",
+                    "pressure": 2000000
+                }
+            ],
+            "temperature": 323,
+            "createdTime": 1770196898000,
+            "fluid": {
+                "updatedTime": 1774587870000,
+                "isDelete": 0,
+                "createdTime": 1773195843000,
+                "fluidName": "gramma",
+                "updatedUser": "user",
+                "fluidId": "fluid-1773195843113-791",
+                "projectId": "project-1770196854355-500",
+                "createdUser": "user"
+            },
+            "black_oil": [
+                {
+                    "waterThermalConductivity": 0.6055,
+                    "gasSpecificHeatCapacity": 2302.74,
+                    "oilApi": 46.18,
+                    "undersaturatedOilViscosityCorrelation": "Vasquez & Beggs",
+                    "fluidId": "fluid-1773195843113-791",
+                    "gasSpecificGravity": 0.72,
+                    "waterSpecificGravity": 1.02,
+                    "deadOilViscosityCorrelation": "Beggs & Robinson",
+                    "oilSpecificHeatCapacity": 1884.06,
+                    "waterSpecificHeatCapacity": 4186.8,
+                    "blackOilId": "a2fd16196cc84de1b60fb9be06f70041",
+                    "gasThermalConductivity": 0.0346,
+                    "oilThermalConductivity": 0.1384,
+                    "fluidName": "gramma",
+                    "liveOilViscosityCorrelation": "Chew & Connally",
+                    "waterRatio": 0.72,
+                    "gasOilRadio": 60.23
+                }
+            ],
+            "createdUser": "user",
+            "featureId": "point-1770196893352-250"
+        }
+    ],
+    "check": [],
+    "equipments": [
+        {
+            "featureId": "point-1770196884620-529",
+            "pointId": "source",
+            "coordinate": "116.237497,31.054233",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/source.png",
+            "attributes": null
+        },
+        {
+            "featureId": "point-1770196893352-250",
+            "pointId": "source",
+            "coordinate": "116.238384,31.035297",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/source.png",
+            "attributes": null
+        },
+        {
+            "featureId": "point-1770196889326-277",
+            "pointId": "sink",
+            "coordinate": "116.276593,31.047652",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/sink.png",
+            "attributes": null
+        },
+        {
+            "featureId": "point-1770201046882-352",
+            "pointId": "junction",
+            "coordinate": "116.25628,31.047113",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/junction.png",
+            "attributes": null
+        },
+        {
+            "featureId": "line-1770201053305-435",
+            "pointId": "flowline",
+            "coordinate": "116.237497,31.054233 116.256337,31.047113",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/flowline.png",
+            "attributes": null
+        },
+        {
+            "featureId": "line-1770201050462-804",
+            "pointId": "flowline",
+            "coordinate": "116.238441,31.035297 116.256337,31.047113",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/flowline.png",
+            "attributes": null
+        },
+        {
+            "featureId": "line-1770201055503-113",
+            "pointId": "flowline",
+            "coordinate": "116.256337,31.047113 116.276593,31.047652",
+            "coordinates": null,
+            "sceneId": "project-1770196854355-500",
+            "createdUser": null,
+            "createdTime": null,
+            "updatedUser": null,
+            "updatedTime": null,
+            "isDelete": null,
+            "imageUrl": "/src/assets/icons/pipeIcon/WellIcon/flowline.png",
+            "attributes": null
+        }
+    ],
+    "boundaryCondition": [
+        {
+            "completion": null,
+            "waterRatioType": "Watercut",
+            "flowrateUnit": "sm3/s",
+            "active": 1,
+            "gasRatioType": "GOR",
+            "type": "source",
+            "waterRatioValue": null,
+            "isPqTable": 1,
+            "waterRatioUnit": null,
+            "zone": null,
+            "fluidType": null,
+            "gasRatioUnit": null,
+            "flowrateValue": null,
+            "name": "流入6",
+            "temperature": 313,
+            "projectEquipmentsId": "point-1770196884620-529",
+            "gasRatioValue": null,
+            "projectId": "project-1770196854355-500",
+            "flowrateType": "Liquid",
+            "pressureAbs": null
+        },
+        {
+            "completion": null,
+            "waterRatioType": "Watercut",
+            "flowrateUnit": "sm3/s",
+            "active": 1,
+            "gasRatioType": "GOR",
+            "type": "sink",
+            "waterRatioValue": null,
+            "isPqTable": 1,
+            "waterRatioUnit": null,
+            "zone": null,
+            "fluidType": null,
+            "gasRatioUnit": null,
+            "flowrateValue": null,
+            "name": "流出",
+            "temperature": null,
+            "projectEquipmentsId": "point-1770196889326-277",
+            "gasRatioValue": null,
+            "projectId": "project-1770196854355-500",
+            "flowrateType": "Liquid",
+            "pressureAbs": null
+        },
+        {
+            "completion": null,
+            "waterRatioType": "Watercut",
+            "flowrateUnit": "sm3/s",
+            "active": 1,
+            "gasRatioType": "GOR",
+            "type": "source",
+            "waterRatioValue": null,
+            "isPqTable": 1,
+            "waterRatioUnit": null,
+            "zone": null,
+            "fluidType": null,
+            "gasRatioUnit": null,
+            "flowrateValue": null,
+            "name": "流入7",
+            "temperature": 313,
+            "projectEquipmentsId": "point-1770196893352-250",
+            "gasRatioValue": null,
+            "projectId": "project-1770196854355-500",
+            "flowrateType": "Liquid",
+            "pressureAbs": null
+        }
+    ],
+    "genericPump": [],
+    "well": [],
+    "constraint": [
+        {
+            "maxLiquidStand": null,
+            "name": "流入6",
+            "projectEquipmentsId": "point-1770196884620-529",
+            "maxGasStand": null,
+            "type": "source",
+            "maxWaterStand": null,
+            "projectId": "project-1770196854355-500",
+            "maxOilStand": null,
+            "maxMassStand": null
+        },
+        {
+            "maxLiquidStand": null,
+            "name": "流出",
+            "projectEquipmentsId": "point-1770196889326-277",
+            "maxGasStand": null,
+            "type": "sink",
+            "maxWaterStand": null,
+            "projectId": "project-1770196854355-500",
+            "maxOilStand": null,
+            "maxMassStand": null
+        },
+        {
+            "maxLiquidStand": null,
+            "name": "流入7",
+            "projectEquipmentsId": "point-1770196893352-250",
+            "maxGasStand": null,
+            "type": "source",
+            "maxWaterStand": null,
+            "projectId": "project-1770196854355-500",
+            "maxOilStand": null,
+            "maxMassStand": null
+        }
+    ],
+    "threePhase": [],
+    "compressor": []
+}
+}
+
+
