@@ -5,8 +5,10 @@ from PipeNetworkModel.PipeNetwork.graphPartitionComplete import GraphOperation
 from PipeNetworkModel.PipeNetwork.pipeNetworkSolve import  PipeNetworkSolve
 from Fluid.blackOil.blackoil import pvt_params
 import  os
+import time
 import igraph as ig
 import json
+import numpy as np
 import pandas as pd
 
 
@@ -15,6 +17,149 @@ class PipeNetworkSimulation:
         self.originalNetworkModel:NetworkModel
         '''原始管网对象'''
 
+
+    def _normalize_sink_pressures(self, sink_p):
+        sink_names = [
+            name for name, node in self.originalNetworkModel.networkNodesDict.items()
+            if node.type == NodeType.SINK
+        ]
+        if not sink_names:
+            return {}
+
+        if sink_p is None:
+            return {
+                name: float(node.pressure)
+                for name, node in self.originalNetworkModel.networkNodesDict.items()
+                if node.type == NodeType.SINK and float(node.pressure or 0.0) > 0.0
+            }
+
+        if isinstance(sink_p, dict):
+            sink_pressures = {
+                str(name): float(pressure)
+                for name, pressure in sink_p.items()
+                if pressure is not None
+            }
+            unknown_sinks = sorted(set(sink_pressures) - set(sink_names))
+            if unknown_sinks:
+                raise ValueError(f"sink_p contains unknown sink node(s): {unknown_sinks}; available sinks: {sink_names}")
+            return sink_pressures
+
+        pressure = float(sink_p)
+        return {name: pressure for name in sink_names}
+
+    def _save_convergence_result(self, pipeNetworkSolve, elapsed_seconds, result_dir="./result"):
+        os.makedirs(result_dir, exist_ok=True)
+        solver = getattr(pipeNetworkSolve, "original_solver", None)
+        history = getattr(solver, "residual_history", []) if solver is not None else []
+        if not history:
+            print(f"Solver timing: elapsed={elapsed_seconds:.3f}s; no convergence history recorded.")
+            return
+
+        df_history = pd.DataFrame(history)
+        csv_path = os.path.join(result_dir, "convergence_history.csv")
+        df_history.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        df_plot = df_history.copy()
+        for col in ("residual_norm", "node_norm", "edge_norm"):
+            df_plot[col] = df_plot[col].astype(float).clip(lower=1e-12)
+
+        png_path = os.path.join(result_dir, "convergence_history.png")
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            matplotlib.rcParams["axes.unicode_minus"] = False
+            import logging
+            logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+            import matplotlib.pyplot as plt
+            from matplotlib.ticker import FuncFormatter, LogLocator
+
+            fig, ax = plt.subplots(figsize=(8, 5), dpi=160)
+            ax.semilogy(df_plot["iteration"], df_plot["residual_norm"], marker="o", label="total residual")
+            ax.semilogy(df_plot["iteration"], df_plot["node_norm"], marker="s", label="node residual")
+            ax.semilogy(df_plot["iteration"], df_plot["edge_norm"], marker="^", label="edge residual")
+            ax.yaxis.set_major_locator(LogLocator(base=10.0))
+            ax.yaxis.set_major_formatter(
+                FuncFormatter(lambda value, _: f"1e{int(np.log10(value))}" if value > 0 else "")
+            )
+            ax.set_xlabel("Iteration")
+            ax.set_ylabel("Residual norm")
+            ax.set_title("Original Network Newton Convergence")
+            ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig(png_path)
+            plt.close(fig)
+            plot_path = png_path
+        except Exception:
+            svg_path = os.path.join(result_dir, "convergence_history.svg")
+            self._save_convergence_svg(df_plot, svg_path)
+            plot_path = svg_path
+
+        final_residual = float(df_history.iloc[-1]["residual_norm"])
+        final_method = df_history.iloc[-1]["method"]
+        converged = getattr(solver, "last_converged", False)
+        print(
+            f"Solver timing: elapsed={elapsed_seconds:.3f}s, "
+            f"iterations={len(df_history)}, final_residual={final_residual:.6e}, "
+            f"final_method={final_method}, converged={converged}, "
+            f"plot={plot_path}, csv={csv_path}"
+        )
+
+    def _save_convergence_svg(self, df_history, svg_path):
+        width, height = 900, 560
+        left, right, top, bottom = 80, 30, 40, 70
+        plot_w = width - left - right
+        plot_h = height - top - bottom
+        x_values = df_history["iteration"].astype(float).tolist()
+        series = [
+            ("total residual", df_history["residual_norm"].astype(float).tolist(), "#1f77b4"),
+            ("node residual", df_history["node_norm"].astype(float).tolist(), "#2ca02c"),
+            ("edge residual", df_history["edge_norm"].astype(float).tolist(), "#d62728"),
+        ]
+        positive_values = [max(v, 1e-30) for _, values, _ in series for v in values]
+        log_min = np.floor(np.log10(min(positive_values)))
+        log_max = np.ceil(np.log10(max(positive_values)))
+        if log_min == log_max:
+            log_min -= 1
+            log_max += 1
+        x_min, x_max = min(x_values), max(x_values)
+        if x_min == x_max:
+            x_min -= 1
+            x_max += 1
+
+        def sx(x):
+            return left + (x - x_min) / (x_max - x_min) * plot_w
+
+        def sy(y):
+            y = max(y, 1e-30)
+            return top + (log_max - np.log10(y)) / (log_max - log_min) * plot_h
+
+        lines = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+            '<rect width="100%" height="100%" fill="white"/>',
+            f'<text x="{width / 2}" y="24" text-anchor="middle" font-family="Arial" font-size="18">Original Network Newton Convergence</text>',
+            f'<line x1="{left}" y1="{top + plot_h}" x2="{left + plot_w}" y2="{top + plot_h}" stroke="#333"/>',
+            f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_h}" stroke="#333"/>',
+            f'<text x="{width / 2}" y="{height - 20}" text-anchor="middle" font-family="Arial" font-size="14">Iteration</text>',
+            f'<text x="18" y="{top + plot_h / 2}" transform="rotate(-90 18 {top + plot_h / 2})" text-anchor="middle" font-family="Arial" font-size="14">Residual norm (log)</text>',
+        ]
+        for exp in range(int(log_min), int(log_max) + 1):
+            y = sy(10 ** exp)
+            lines.append(f'<line x1="{left}" y1="{y:.1f}" x2="{left + plot_w}" y2="{y:.1f}" stroke="#ddd" stroke-dasharray="4 4"/>')
+            lines.append(f'<text x="{left - 8}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial" font-size="11">1e{exp}</text>')
+        for label, values, color in series:
+            points = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in zip(x_values, values))
+            lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{points}"/>')
+            for x, y in zip(x_values, values):
+                lines.append(f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="3" fill="{color}"/>')
+        legend_x = left + plot_w - 180
+        legend_y = top + 20
+        for idx, (label, _, color) in enumerate(series):
+            y = legend_y + idx * 22
+            lines.append(f'<line x1="{legend_x}" y1="{y}" x2="{legend_x + 24}" y2="{y}" stroke="{color}" stroke-width="3"/>')
+            lines.append(f'<text x="{legend_x + 32}" y="{y + 4}" font-family="Arial" font-size="12">{label}</text>')
+        lines.append("</svg>")
+        with open(svg_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     def readNetworkFromFile(self,excelPath:str)->NetworkModel:
         '''
@@ -470,7 +615,8 @@ class PipeNetworkSimulation:
         return json_data
 
     def start(self, fileOrJson,jsonNetworkModel={}, excelPath = "./DB/NetworkProject.xlsx",isSavePicture=False,
-              isSaveResult=False, savePath = "./segGraphResult",gridLength:float=10.0):
+              isSaveResult=False, savePath = "./segGraphResult",gridLength:float=10.0,
+              solverMode: str = "direct", sink_p=None):
         """
         串联管网仿真过程
         :param fileOrJson: 从json字符串获取模型信息或者excel文件中获取，file/json
@@ -492,8 +638,11 @@ class PipeNetworkSimulation:
         self.originalNetworkModel.meshConnGrid(gridLength)
 
         # *************************牛顿求解算法**********************************************************
-        pipeNetworkSolve =PipeNetworkSolve(self.originalNetworkModel, self.subNetworkModelLevel1, self.subNetworkModelLevel2)
-        pipeNetworkSolve.solve()
+        pipeNetworkSolve =PipeNetworkSolve(self.originalNetworkModel)
+        sink_pressures = self._normalize_sink_pressures(sink_p)
+        solve_start_time = time.perf_counter()
+        pipeNetworkSolve.solve(mode=solverMode, sink_pressures=sink_pressures)
+        solve_elapsed = time.perf_counter() - solve_start_time
         # *************************牛顿求解算法**********************************************************
 
         #*************************二分求解，仅三节点管网可求，不需要删除，注释即可**********************************************************
@@ -522,6 +671,7 @@ class PipeNetworkSimulation:
 
 
         # jsonResult = self.readSimulatedResultFromJson()
+        self._save_convergence_result(pipeNetworkSolve, solve_elapsed, result_dir=savePath)
 
         return jsonResult
 
@@ -556,6 +706,7 @@ if __name__ == "__main__":
     savePath = "./segGraphResult"
 
     gridLength = 100.0 #管网网格划分长度,m
+    sink_p = None
 
     # 打开JSON文件，直接用json.load解析
     with open(filePath, "r", encoding='utf-8') as f:
@@ -565,6 +716,7 @@ if __name__ == "__main__":
     jsonNetworkModel = json_data["jsonNetworkModel"]
 
     networkSim = PipeNetworkSimulation()
-    networkSim.start(fileOrJson='json',jsonNetworkModel=jsonNetworkModel,isSavePicture=True,isSaveResult=True, savePath=savePath,gridLength=gridLength)
+    networkSim.start(fileOrJson='json',jsonNetworkModel=jsonNetworkModel,isSavePicture=True,isSaveResult=True,
+                     savePath=savePath,gridLength=gridLength, sink_p=sink_p)
 
     # *************************从json文件读取管网模型数据进行计算，不需要删除，注释即可**********************************************************

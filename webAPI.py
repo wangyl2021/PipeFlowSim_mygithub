@@ -18,6 +18,7 @@ def pipe_network_sim_api():
         is_save_result = request_data.get("isSaveResult", False)
         save_path = request_data.get("savePath", "./segGraphResult")
         grid_length = float(request_data.get("gridLength", 100.0))
+        sink_p = request_data.get("sink_p", request_data.get("sinkP"))
 
         network_sim = PipeNetworkSimulation()
         raw_result = network_sim.start(
@@ -27,7 +28,8 @@ def pipe_network_sim_api():
             isSavePicture=is_save_picture,
             isSaveResult=is_save_result,
             savePath=save_path,
-            gridLength=grid_length
+            gridLength=grid_length,
+            sink_p=sink_p
         )
 
         # result = json.loads(raw_result) if raw_result else {}

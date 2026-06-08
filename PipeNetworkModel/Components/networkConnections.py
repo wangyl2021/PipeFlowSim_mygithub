@@ -466,6 +466,7 @@ class FlowLineSim():
         self.P_end = 0.0
         self.T_start = 0.0
         self.T_end = 0.0
+        self.verbose = False
 
         self.ProfileResult:pd.DataFrame =pd.DataFrame({"id":pd.Series(dtype=int),
                                                         "measure":pd.Series(dtype=float),
@@ -513,7 +514,8 @@ class FlowLineSim():
         P = P_start
         T = T_start
         for idx, grid in enumerate(self.grids):
-            print(f'start to calculate profile for grid {idx}')
+            if self.verbose:
+                print(f'start to calculate profile for grid {idx}')
             if idx == 0:
                 newRow={'id':grid.id,'measure':grid.start_pos,'horizontalPosition':grid.start_horizontal_pos,
                         'verticalPosition':grid.start_vertical_pos,'pressure':P,'temperature':T}

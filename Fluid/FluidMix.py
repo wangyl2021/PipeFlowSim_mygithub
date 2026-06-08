@@ -1,6 +1,8 @@
 #### 流体混合规则文件
 from Fluid.blackOil import blackoil
 import numpy as np
+
+VERBOSE = False
 import math
 
 
@@ -156,7 +158,8 @@ def fluidMix(Multiple_fluids,fluidType):
     """
     newFluid = fluidParamMix(Multiple_fluids,fluidType)
     mixTempe = fluidTemperatureMix(Multiple_fluids,fluidType,newFluid)
-    print(f'multiple fluids mixed! temperature of new fluid is : {mixTempe}')
+    if VERBOSE:
+        print(f'multiple fluids mixed! temperature of new fluid is : {mixTempe}')
     return newFluid,mixTempe
 
 

@@ -244,19 +244,28 @@ class Source(NetworkNode):
 
     def setBoundary(self, dicBoundaryCondition):
 
+        if dicBoundaryCondition is None:
+            return
         self.isActive=dicBoundaryCondition['active']
-        self.pressure=dicBoundaryCondition['pressureAbs']
-        self.temperature=dicBoundaryCondition['temperature']
+        pressure = dicBoundaryCondition.get('pressureAbs')
+        if pressure is not None:
+            self.pressure=pressure
+        temperature = dicBoundaryCondition.get('temperature')
+        if temperature is not None:
+            self.temperature=temperature
 
-        self.isPQCurve=dicBoundaryCondition['isPqTable']
+        self.isPQCurve=dicBoundaryCondition.get('isPqTable', self.isPQCurve)
         if not self.isPQCurve:
-            self.boundaryType= dicBoundaryCondition['flowrateType']
+            self.boundaryType= dicBoundaryCondition.get('flowrateType') or self.boundaryType
+            flowrate_value = dicBoundaryCondition.get('flowrateValue')
+            if flowrate_value is None:
+                return
             if 'gas' in self.boundaryType.lower().replace(" ",""):
-                self.gasFlow = dicBoundaryCondition['flowrateValue']
+                self.gasFlow = flowrate_value
             elif 'liquid' in self.boundaryType.lower().replace(" ",""):
-                self.liquidFlow = dicBoundaryCondition['flowrateValue']
+                self.liquidFlow = flowrate_value
             else:
-                self.massFlow = dicBoundaryCondition['flowrateValue']
+                self.massFlow = flowrate_value
 
 
 
@@ -315,16 +324,24 @@ class Source(NetworkNode):
 
 
             pressures = cleaned_df['pressure'].values.astype(np.float64)
-            flows = cleaned_df['MassFlowrate'].values.astype(np.float64)
+            flows = cleaned_df['massFlowrate'].values.astype(np.float64)
+
+            if len(pressures) == 0:
+                return 0.0
+            if len(pressures) == 1:
+                return max(float(flows[0]), 0.0)
+
+            pressure = float(np.clip(pressure, pressures[0], pressures[-1]))
 
             # 手动二分查找定位区间
             idx = binarySearch(pressures, pressure)
+            idx = min(max(idx, 1), len(pressures) - 1)
 
             # 线性插值计算
             p0, p1 = pressures[idx - 1], pressures[idx]
             q0, q1 = flows[idx - 1], flows[idx]
             massFlowRate = q0 + (q1 - q0) * (pressure - p0) / (p1 - p0)
-            return massFlowRate
+            return max(float(massFlowRate), 0.0)
         else:
             raise RuntimeError(f'未启用PQ曲线时，无法根据节点压力获取节点流量！')
 
@@ -429,15 +446,22 @@ class Sink(NetworkNode):
 
     def setBoundary(self, dicBoundaryCondition):
 
+        if dicBoundaryCondition is None:
+            return
         self.isActive=dicBoundaryCondition['active']
-        self.pressure=dicBoundaryCondition['pressureAbs']
-        self.boundaryType= dicBoundaryCondition['flowrateType']
+        pressure = dicBoundaryCondition.get('pressureAbs')
+        if pressure is not None:
+            self.pressure=pressure
+        self.boundaryType= dicBoundaryCondition.get('flowrateType') or self.boundaryType
+        flowrate_value = dicBoundaryCondition.get('flowrateValue')
+        if flowrate_value is None:
+            return
         if 'gas' in self.boundaryType.lower().replace(" ",""):
-            self.gasFlow = dicBoundaryCondition['flowrateValue']
+            self.gasFlow = flowrate_value
         elif 'liquid' in self.boundaryType.lower().replace(" ",""):
-            self.liquidFlow = dicBoundaryCondition['flowrateValue']
+            self.liquidFlow = flowrate_value
         else:
-            self.massFlow = dicBoundaryCondition['flowrateValue']
+            self.massFlow = flowrate_value
 
 
     def CalculateHead(self):
@@ -573,6 +597,3 @@ class Choke(NetworkNode):
         self.isSonicDownstreamVelocityIdentify = isSonicDownstreamVelocityIdentify
         self.isAdjustSubCriticalCorrelation = isAdjustSubCriticalCorrelation
         self.isPrintDetailedCalculations = isPrintDetailedCalculations
-
-
-

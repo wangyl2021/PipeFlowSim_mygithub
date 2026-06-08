@@ -8,18 +8,19 @@ from PipeNetworkModel.PipeNetwork.pipSolver import *
 
 
 
+
 class PipeNetworkSolve:
-    def __init__(self,networkModel:NetworkModel, subNetworkModelLevel1:dict[str,NetworkModel], subNetworkModelLevel2:dict[str, NetworkModel]):
+    def __init__(self,networkModel:NetworkModel):
         self.originalNetworkModel: NetworkModel= networkModel
-        self.subNetworkModelLevel1: dict[str, NetworkModel] = subNetworkModelLevel1
-        '''一级子网络，键为网络名称，值为网络对象'''
-        self.subNetworkModelLevel2: dict[str, NetworkModel] = subNetworkModelLevel2
-        '''二级子网络字典，键为网络名称，值为网络对象'''
+        self.original_solver: OriginalNetworkNewtonSolver | None = None
+        self.subNetworkModelLevel1: dict[str, NetworkModel] = {}
+        self.subNetworkModelLevel2: dict[str, NetworkModel] = {}
 
         # interface_node -> 参与的 level1 子网列表
         self.interface_to_level1: dict[str, list[str]] = defaultdict(list)
 
-        self.level1_solvers: Dict[str, PipeSubNetworkLevel1Solver] = {}
+        self.solvers: Dict[str, SingleNetworkNewtonSolver] = {}
+        # self.level1_solvers: Dict[str, PipeSubNetworkLevel1Solver] = {}
         self.level2_solvers: Dict[str, SingleNetworkNewtonSolver] = {}
 
         # 新增：接口节点的结构压力向量，在两层迭代中持续更新
@@ -27,7 +28,19 @@ class PipeNetworkSolve:
 
         # 二级接口节点上的“本地注入/负荷”，不是跨层那一部分
         # key: 节点名，value: 本地注入（正为注入，负为外送）
-        self.level2_local_injection: Dict[str, float] = {}
+        self.local_injection: Dict[str, float] = {}
+        self.level2_local_injection = self.local_injection
+
+    def _normalize_sink_pressures(self, sink_pressures):
+        sink_names = [
+            name for name, node in self.originalNetworkModel.networkNodesDict.items()
+            if node.type == NodeType.SINK
+        ]
+        if sink_pressures is None or isinstance(sink_pressures, dict):
+            return sink_pressures
+
+        pressure = float(sink_pressures)
+        return {name: pressure for name in sink_names}
 
     @staticmethod
     def _compute_node_q_net(
@@ -104,8 +117,8 @@ class PipeNetworkSolve:
                     self.interface_to_level1[iface_name].append(sub_name)
 
         ### solvers
-        for name, model in self.subNetworkModelLevel1.items():
-            self.level1_solvers[name] = PipeSubNetworkLevel1Solver(model)
+        # for name, model in self.subNetworkModelLevel1.items():
+        #     self.level1_solvers[name] = PipeSubNetworkLevel1Solver(model)
 
         for name, model in self.subNetworkModelLevel2.items():
             self.level2_solvers[name] = SingleNetworkNewtonSolver(model)
@@ -323,35 +336,94 @@ class PipeNetworkSolve:
             )
 
 
-    def solve(self):
 
-        # Oil_API = 32
-        # Water_Cut = 0.2
-        # Water_Specific_Gravity = 1
-        # GOR = 160
-        # Gas_Specific_Gravity = 0.75
-        # Oil_C0 = 1884.06
-        # Gas_C0 = 1884.06
-        # Water_C0 = 4186.8
-        # fluid = pvt_params(Oil_API, Water_Cut, GOR, Gas_Specific_Gravity, Water_Specific_Gravity,
-        #                    Oil_C0, Gas_C0, Water_C0)
-        #
-        # nodesDict = self.originalNetworkModel.networkNodesDict
-        # connDict = self.originalNetworkModel.networkConnDict
-        # neighborNodesEdges = self.originalNetworkModel.neighborNodesEdges
-        # nodesCalOrder = self.originalNetworkModel.nodesCalOrder
-        #
-        # for node in nodesCalOrder:
-        #     lstInflowNode:list[NetworkNode]  = neighborNodesEdges[node]["inflowNode"]
-        #     lstOutflowNode:list[NetworkNode]  = neighborNodesEdges[node]["outflowNode"]
-        #     lstInflowConn:list[Connection]  = neighborNodesEdges[node]["inflowConn"]
-        #     lstOutflowConn:list[Connection] = neighborNodesEdges[node]["outflowConn"]
-        #
-        #     for inflowNode in lstInflowNode:
-        #         node.flowRate = node.flowRate + inflowNode.flowRate
-        #
-        #     for outflowConn in lstOutflowConn:
-        #         outflowConn.flowlineSim.calculateProfile(fluid,node.flowRate,node.pressure,node.temperature)
-        # 一、二层迭代耦合求解，给出二级终端的压力边界
-        sink_p = {"流出": 7e5}  # 按需调整
-        self.solve_two_levels_iterative(sink_pressures=sink_p)
+    def solve_original_network(
+            self,
+            sink_pressures: Dict[str, float] = None,
+            boundary_conditions: Dict[str, Dict[str, float]] = None,
+            injection: Dict[str, float] = None,
+            tol: float = 1e-2,
+            max_iter: int = 100,
+            damping: float = 0.5,
+    ) -> tuple[Dict[str, float], Dict[str, float]]:
+        """
+        使用单层 Newton 法直接求解 originalNetworkModel。
+
+        参数接口：
+        - sink_pressures: 可选，覆盖模型中 sink 节点自带的压力边界
+        - boundary_conditions: 可选，格式 {"pressure": {...}, "injection": {...}}
+        - injection: 可选，节点外部注入量，正值为注入网络，负值为从网络抽取
+
+        返回：
+        - node_pressure: 全网节点压力
+        - conn_flowrate: 全网连接边质量流量
+        """
+        sink_pressures = self._normalize_sink_pressures(sink_pressures)
+        self.original_solver = OriginalNetworkNewtonSolver(self.originalNetworkModel)
+        node_pressure, conn_flowrate = self.original_solver.solve(
+            boundary_conditions=boundary_conditions,
+            sink_pressures=sink_pressures,
+            injection=injection,
+            tol=tol,
+            max_iter=max_iter,
+            damping=damping,
+        )
+        if not self.original_solver.last_converged:
+            raise RuntimeError(
+                "Original network Newton solver did not converge: "
+                f"residual={self.original_solver.last_residual_norm}"
+            )
+        return node_pressure, conn_flowrate
+
+    def solve_direct_network(
+            self,
+            sink_pressures: Dict[str, float] = None,
+            boundary_conditions: Dict[str, Dict[str, float]] = None,
+            injection: Dict[str, float] = None,
+            tol: float = 1e-2,
+            max_iter: int = 100,
+            damping: float = 0.5,
+    ) -> tuple[Dict[str, float], Dict[str, float]]:
+        """
+        Directly solve the original full network with the Newton solver in pipSolver.
+        This path does not split the network into level-1/level-2 subnetworks.
+        """
+        return self.solve_original_network(
+            sink_pressures=sink_pressures,
+            boundary_conditions=boundary_conditions,
+            injection=injection,
+            tol=tol,
+            max_iter=max_iter,
+            damping=damping,
+        )
+
+    def solve(
+            self,
+            mode: str = "direct",
+            sink_pressures: Dict[str, float] = None,
+            boundary_conditions: Dict[str, Dict[str, float]] = None,
+            injection: Dict[str, float] = None,
+            tol: float = 1e-2,
+            max_iter: int = 100,
+            damping: float = 0.5,
+    ):
+        mode = (mode or "direct").strip().lower()
+        sink_pressures = self._normalize_sink_pressures(sink_pressures)
+
+        if mode == "two_levels":
+            # 一、二层迭代耦合求解，给出二级终端的压力边界
+            sink_p = sink_pressures or {"sink1": 7e5}  # 按需调整
+            self.solve_two_levels_iterative(sink_pressures=sink_p)
+            return None
+
+        if mode not in ("direct", "single", "original", "newton"):
+            raise ValueError(f"Unknown solve mode: {mode}")
+
+        return self.solve_direct_network(
+            sink_pressures=sink_pressures,
+            boundary_conditions=boundary_conditions,
+            injection=injection,
+            tol=tol,
+            max_iter=max_iter,
+            damping=damping,
+        )

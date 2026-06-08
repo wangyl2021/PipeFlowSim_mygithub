@@ -503,7 +503,9 @@ class NetworkModel:
         #     raise TypeError(f"只有二级子网需要调用该接口更新水力热力参数，当前子网类型{self.enNetworkLevel}")
 
         #先更新流体流向及相关参数
-        self.updateFlowDirectionByPressure(nodePressure)
+        for node_name, pressure in nodePressure.items():
+            if node_name in self.networkNodesDict:
+                self.networkNodesDict[node_name].pressure = pressure
 
         #根据节点计算顺序，计算各节点流体和管道的参数
         for node in self.nodesCalOrder:
@@ -551,18 +553,27 @@ class NetworkModel:
             if node.type == NodeType.JUNCTION or node.type == NodeType.SOURCE:
                 for idx, neighborConn in enumerate(outflowConn):
                     massFlowRate = 0.0
-                    if node.type == NodeType.SOURCE:
-                        massFlowRate = node.getMassFlowRateByPressure(nodePressure[node.name])
+                    if neighborConn.name in connFlowRate:
+                        massFlowRate = max(float(connFlowRate[neighborConn.name]), 1e-8)
+                    elif node.type == NodeType.SOURCE:
+                        massFlowRate = max(float(node.getMassFlowRateByPressure(nodePressure[node.name])), 1e-8)
                     else:
                         if len(outflowConn) == 1:
-                            massFlowRate = sumMassFlowRate
+                            massFlowRate = max(float(sumMassFlowRate), 1e-8)
                         else:
-                            massFlowRate = connFlowRate[neighborConn.name]
+                            massFlowRate = max(float(connFlowRate[neighborConn.name]), 1e-8)
 
                     if isinstance(neighborConn, FlowLine):
-                        neighborConn.flowlineSim.calculateProfile(node.fluid, massFlowRate,
-                                                                  node.pressure, node.temperature,
-                                                                  neighborConn.flowDirection)
+                        try:
+                            neighborConn.flowlineSim.calculateProfile(node.fluid, massFlowRate,
+                                                                      node.pressure, node.temperature,
+                                                                      neighborConn.flowDirection)
+                        except (ValueError, ZeroDivisionError, FloatingPointError, OverflowError) as exc:
+                            raise type(exc)(
+                                f"{exc}; node={node.name}, conn={neighborConn.name}, "
+                                f"massFlowRate={massFlowRate}, pressure={node.pressure}, "
+                                f"temperature={node.temperature}, flowDirection={neighborConn.flowDirection}"
+                            ) from exc
             elif node.type == NodeType.THREE_PHASE_SEP:
                 #设备节点需要先计算设备对流体的作用，再计算各管道流体参数
                 pass
