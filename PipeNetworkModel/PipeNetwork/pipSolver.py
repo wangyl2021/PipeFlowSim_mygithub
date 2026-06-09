@@ -14,7 +14,7 @@ class SingleNetworkNewtonSolver:
 
     def __init__(self, network: NetworkModel):
         self.network = network
-        self.verbose: bool = False
+        self.verbose: bool = True
         self.last_x: np.ndarray | None = None
         self.last_converged: bool = False
         self.last_residual_norm: float | None = None
@@ -108,7 +108,7 @@ class SingleNetworkNewtonSolver:
 
             return F
 
-        except (ValueError, ZeroDivisionError, FloatingPointError, OverflowError, RuntimeWarning) as e:
+        except (ValueError, ZeroDivisionError, FloatingPointError, OverflowError, RuntimeWarning, TypeError) as e:
             if self.verbose:
                 print(f"[Inner safe residual] invalid trial rejected: {e}")
             return np.full(self.n_unknowns, 1e20)
@@ -158,90 +158,74 @@ class SingleNetworkNewtonSolver:
 
         try:
             update_flag = self.network.updateFluidParam(p_full, q_full)
-        except (ValueError, ZeroDivisionError, FloatingPointError, OverflowError) as exc:
+        except Exception as exc:
             self.last_update_error = exc
+            if self.verbose:
+                print(f"[WARN _build_residual] updateFluidParam raised {type(exc).__name__}: {exc}")
             update_flag = False
-        # update_flag = True
-        if update_flag:
-            # 提前取好外部注入字典
 
-            inj_dict = boundary_conditions.get("injection", {})
+        if not update_flag and self.verbose:
+            print(f"[WARN _build_residual] updateFluidParam returned False，使用上次缓存 Δp 继续计算残差")
 
-            # 1. 节点质量守恒：对每个节点 i: sum_in(q) - sum_out(q) + q_inj = 0
-            # 约定：q_inj > 0 表示外界向该节点注入网络；q_inj < 0 表示该节点从网络向外抽取
-            for node_name, node in self.networkNodesDict_not_include_sink.items():
-                idx = self.node_index_not_include_sink[node_name]
+        # 无论 updateFluidParam 是否成功，都计算残差。
+        # 失败时只影响 Δp 精度（用上次缓存值或 0 兜底），不影响质量守恒方程精度。
+        # 这样牛顿法能在初始点或不良中间点继续迭代，而不是直接崩溃到全 1e20。
 
-                flow_in = 0.0
-                flow_out = 0.0
+        inj_dict = boundary_conditions.get("injection", {})
 
-                # 统计进入 / 流出该节点的所有管段流量
-                for conn_name, conn in self.network.networkConnDict.items():
-                    # 使用冻结参考流向
-                    n_from, n_to = conn.flowDirection
-                    q_e = q_full[conn_name]
+        # 1. 节点质量守恒：sum_in(q) - sum_out(q) + q_inj = 0
+        for node_name, node in self.networkNodesDict_not_include_sink.items():
+            idx = self.node_index_not_include_sink[node_name]
 
-                    if n_to == node_name:
-                        flow_in += q_e
-                    if n_from == node_name:
-                        flow_out += q_e
+            flow_in = 0.0
+            flow_out = 0.0
 
-                # 外部给定的注入/抽取（比如出口负荷），约定：+ 注入，- 抽取
-                q_inj = inj_dict.get(node_name, 0.0)
-
-                # 源节点：叠加 p-q 曲线注入
-                if node.type == NodeType.SOURCE:
-                    q_inj += self._source_injection(node_name, p_full[node_name])
-
-                F[idx] = flow_in - flow_out + q_inj
-
-            # 2. 管段压降关系
-            #    F_edge = p_from - p_to - Δp(q, conn) = 0
-            #    这里给一个简单的 R*q*|q| 形式示意，具体你可以改。
             for conn_name, conn in self.network.networkConnDict.items():
-                e_idx = self.edge_index[conn_name]
-                # 对应 residual 的位置是在 F 的后半部分
-                F_idx = self.n_nodes_not_include_sink + e_idx
-
                 n_from, n_to = conn.flowDirection
-                p_from = p_full[n_from]
-                # if n_to == 'sink1':
-                #     d = dict(boundary_conditions["pressure"].items())
-                #     p_to = d[n_to]
-                # else:
-                #     p_to = p[n_to]
-                p_to = p_full[n_to]
-                # q_e = q[conn_name]
+                q_e = q_full[conn_name]
 
+                if n_to == node_name:
+                    flow_in += q_e
+                if n_from == node_name:
+                    flow_out += q_e
 
-                # # # TODO: 这里可以根据 length / 直径 / 流体性质构建更真实的 Δp 公式
+            q_inj = inj_dict.get(node_name, 0.0)
 
+            if node.type == NodeType.SOURCE:
+                q_inj += self._source_injection(node_name, p_full[node_name])
+
+            F[idx] = flow_in - flow_out + q_inj #q_inj > 0：外部向管网投入流量；q_inj < 0：节点从管网抽取流量；
+
+        # 2. 管段压降关系：sign(q) * (p_from - p_to) = Δp
+        delta_p_model = 0.0
+        for conn_name, conn in self.network.networkConnDict.items():
+            e_idx = self.edge_index[conn_name]
+            F_idx = self.n_nodes_not_include_sink + e_idx
+
+            n_from, n_to = conn.flowDirection
+            p_from = p_full[n_from]
+            p_to = p_full[n_to]
+            q_e = q_full[conn_name]
+
+            try:
                 delta_p_model = conn.flowlineSim.getFlowlinePressureDrop()
+                if not np.isfinite(delta_p_model):
+                    delta_p_model = 0.0
+            except Exception:
+                delta_p_model = 0.0  # calculateProfile 从未调用或失败时，以 0 兜底
 
-                F[F_idx] = p_from - p_to - delta_p_model
+            # q > 0：正向流，p_from > p_to；q < 0：反向流，p_to > p_from
+            sign_q = 1.0 if q_e >= 0 else -1.0
+            F[F_idx] = sign_q * (p_from - p_to) - delta_p_model
 
-                # R = getattr(conn, "resistance", 1e-0)  # 举例：如果没设置，就给个很小的阻力
-                # delta_p_model = R * q_e * abs(q_e)
-                # F[F_idx] = p_from - p_to - delta_p_model
+        self.last_delta_p = delta_p_model
 
-                # delta_p_model = p_from - p_to - 5
-                # F[F_idx] = delta_p_model
-            self.last_delta_p = delta_p_model
-            # print(f"last Δp model value: {self.last_delta_p:.3e}", f"last p_from: {p_from:.3e}", f"last p_to: {p_to:.3e}")
-            for node_name, p_fix in pBoundary.items():
-                if node_name in self.node_index_not_include_sink:
-                    idx = self.node_index_not_include_sink[node_name]
-                    # 注意：这里必须用原始未知量 p，而不是被覆盖后的 p_full
-                    F[idx] = p[node_name] - p_fix
+        # 3. 压力边界条件（强制方程覆盖质量守恒方程）
+        for node_name, p_fix in pBoundary.items():
+            if node_name in self.node_index_not_include_sink:
+                idx = self.node_index_not_include_sink[node_name]
+                F[idx] = p[node_name] - p_fix
 
-            # # 3. 边界条件：指定压力（用强制方程）
-            # if "pressure" in boundary_conditions:
-            #     for node_name, p_fix in boundary_conditions["pressure"].items():
-            #         idx = self.node_index[node_name]
-            #         # 用 p_i - p_fix = 0 替换原有质量平衡方程
-            #         F[idx] = p[node_name] - p_fix
-        else:
-            F[:] = 1e20
         return F
 
     def _project_pressure_bc_to_x(self, x, boundary_conditions):
@@ -283,12 +267,14 @@ class SingleNetworkNewtonSolver:
                 idx = self.node_index_not_include_sink[node_name]
                 x[idx] = p_fix
 
-        # 3. 流量变量限制
+        # 3. 流量变量限制（保号死区夹紧：允许负流量，但排除 (-q_min_abs, q_min_abs) 死区）
         for conn_name, eidx in self.edge_index.items():
             idx = self.n_nodes_not_include_sink + eidx
-
-            # 当前冻结流向版本：q 只允许沿 flowDirection 正向流动
-            x[idx] = np.clip(x[idx], q_min_abs, q_max_abs)
+            q_val = x[idx]
+            if q_val >= 0:
+                x[idx] = np.clip(q_val, q_min_abs, q_max_abs)
+            else:
+                x[idx] = np.clip(q_val, -q_max_abs, -q_min_abs)
 
         return x
 
@@ -298,7 +284,7 @@ class SingleNetworkNewtonSolver:
 
         lower[:self.n_nodes_not_include_sink] = 1e5
         upper[:self.n_nodes_not_include_sink] = 5e7
-        lower[self.n_nodes_not_include_sink:] = 1e-8
+        lower[self.n_nodes_not_include_sink:] = -1e3   # 允许反向流
         upper[self.n_nodes_not_include_sink:] = 1e3
         return lower, upper
 
@@ -583,11 +569,31 @@ class OriginalNetworkNewtonSolver(SingleNetworkNewtonSolver):
         if hasattr(node, "isActive") and not node.isActive:
             return 0.0
 
+        is_pq_curve = getattr(node, "isPQCurve", False)
         boundary_type = self._normalize_boundary_type(getattr(node, "boundaryType", ""))
-        if boundary_type == "massflowrate" and not getattr(node, "isPQCurve", False):
-            return max(self._as_float(getattr(node, "massFlow", 0.0), 0.0), 0.0)
 
-        return max(float(node.getMassFlowRateByPressure(p_i)), 0.0)
+        if is_pq_curve:
+            # PQ曲线模式：根据当前节点压力插值获取质量流量
+            q = max(float(node.getMassFlowRateByPressure(p_i)), 0.0)
+        elif boundary_type == "massflowrate":
+            # 固定质量流量边界
+            q = max(self._as_float(getattr(node, "massFlow", 0.0), 0.0), 0.0)
+        elif boundary_type in ("liquidflowrate", "gasflowrate"):
+            # 体积流量边界：优先使用已转换的质量流量，否则退回父类默认参数计算
+            mass_flow = self._as_float(getattr(node, "massFlow", 0.0), 0.0)
+            q = mass_flow if mass_flow > 0.0 else super()._source_injection(node_name, p_i)
+        else:
+            # 无明确边界类型（或边界条件未设置）：退回父类默认PQ参数计算
+            q = super()._source_injection(node_name, p_i)
+
+        # 应用产量约束（来自 network.dicRateConstraint）
+        rate_constraint = getattr(self.network, "dicRateConstraint", {}).get(node_name)
+        if rate_constraint is not None:
+            max_mass = self._as_float(getattr(rate_constraint, "max_mass", None), float("inf"))
+            if 0.0 < max_mass < float("inf"):
+                q = min(q, max_mass)
+
+        return q
 
     def _default_pressure_boundary(self) -> Dict[str, float]:
         pressure_bc: Dict[str, float] = {}
@@ -634,14 +640,23 @@ class OriginalNetworkNewtonSolver(SingleNetworkNewtonSolver):
 
     def _build_initial_x(self, boundary_conditions: Dict[str, Dict[str, float]]) -> np.ndarray:
         pressure_bc = boundary_conditions.get("pressure", {})
+
+        # 收集所有已知压力，计算合理的备用初始压力（避免写死 1 MPa 偏离真实范围）
+        known_pressures = [v for v in (
+            list(pressure_bc.values()) +
+            [self._as_float(getattr(n, "pressure", None), 0.0)
+             for n in self.network.networkNodesDict.values()]
+        ) if v > 0.0]
+        fallback_p = sum(known_pressures) / len(known_pressures) if known_pressures else 1.0e6
+
         p0: Dict[str, float] = {}
         for node_name, node in self.network.networkNodesDict.items():
             if node_name in pressure_bc:
-                p0[node_name] = self._as_float(pressure_bc[node_name], 1.0e6)
+                p0[node_name] = self._as_float(pressure_bc[node_name], fallback_p)
             elif self._as_float(getattr(node, "pressure", None), 0.0) > 0.0:
-                p0[node_name] = self._as_float(node.pressure, 1.0e6)
+                p0[node_name] = self._as_float(node.pressure, fallback_p)
             else:
-                p0[node_name] = 1.0e6
+                p0[node_name] = fallback_p
 
         source_rates = [
             self._source_injection(node_name, p0[node_name])

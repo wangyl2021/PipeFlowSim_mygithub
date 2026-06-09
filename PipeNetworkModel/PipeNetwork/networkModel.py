@@ -515,12 +515,14 @@ class NetworkModel:
             outflowConn=self.neighborNodesEdges[node]["outflowConn"]
 
             if node.type==NodeType.SOURCE:
-                if len(inflowConn)!=0 or len(outflowConn)==0:
-                    print(f'Cannot compute pipeline pressure drop,A source node "{node.name}"  must have outgoing edges, but must not have incoming edges.')
+                # 仅在 SOURCE 节点完全没有流出边时失败（允许环形管网中源节点存在流入边）
+                if len(outflowConn)==0:
+                    print(f'Cannot compute pipeline pressure drop,A source node "{node.name}" must have at least one outgoing edge.')
                     return False
             elif node.type==NodeType.SINK:
-                if len(inflowConn)==0 or len(outflowConn)!=0:
-                    print(f'Cannot compute pipeline pressure drop,A sink node "{node.name}"  must have incoming edges, but must not have outgoing edges.')
+                # 仅在 SINK 节点完全没有流入边时失败（允许环形管网中汇节点存在流出边）
+                if len(inflowConn)==0:
+                    print(f'Cannot compute pipeline pressure drop,A sink node "{node.name}" must have at least one incoming edge.')
                     return False
             else:
                 if len(inflowConn)==0 or len(outflowConn)== 0:
@@ -532,13 +534,22 @@ class NetworkModel:
 
             for idx, neighborConn in enumerate(inflowConn):
                 if isinstance(neighborConn,FlowLine):
-                    fluid = neighborConn.flowlineSim.fluid
-                    flowRate = neighborConn.flowlineSim.flowRate
-                    #温度使用管道末端的温度，需要考虑管道沿程的温降特性
-                    temperature = neighborConn.flowlineSim.T_end
-                    param= neighborConn.flowlineSim.getFlowlineTwoEndParam(node.name)
-                    sumMassFlowRate+=flowRate
-                    lstFluids.append({'fluid':fluid,'massFlowRate':flowRate,'temperature':param['temperature']})
+                    # 环形管网：若流量为负则该边实际反向流动，不向本节点供流，跳过
+                    _q_conn = connFlowRate.get(neighborConn.name)
+                    if _q_conn is not None and float(_q_conn) < 0:
+                        continue
+                    try:
+                        fluid = neighborConn.flowlineSim.fluid
+                        flowRate = neighborConn.flowlineSim.flowRate
+                        #温度使用管道末端的温度，需要考虑管道沿程的温降特性
+                        temperature = neighborConn.flowlineSim.T_end
+                        param= neighborConn.flowlineSim.getFlowlineTwoEndParam(node.name)
+                        sumMassFlowRate+=flowRate
+                        lstFluids.append({'fluid':fluid,'massFlowRate':flowRate,'temperature':param['temperature']})
+                    except (IndexError, KeyError, AttributeError) as exc:
+                        print(f"[WARN updateFluidParam] inflowConn lookup failed: "
+                              f"node={node.name}, conn={neighborConn.name}: "
+                              f"{type(exc).__name__}: {exc}")
             if len(lstFluids) == 1:
                 node.fluid = lstFluids[0]['fluid']
                 node.temperature = lstFluids[0]['temperature']
@@ -552,28 +563,65 @@ class NetworkModel:
             #根据流出边及分流量计算各边流体的参数
             if node.type == NodeType.JUNCTION or node.type == NodeType.SOURCE:
                 for idx, neighborConn in enumerate(outflowConn):
-                    massFlowRate = 0.0
+                    # 获取带符号流量（允许负值以支持环形管网反向流）
                     if neighborConn.name in connFlowRate:
-                        massFlowRate = max(float(connFlowRate[neighborConn.name]), 1e-8)
+                        q_signed = float(connFlowRate[neighborConn.name])
                     elif node.type == NodeType.SOURCE:
-                        massFlowRate = max(float(node.getMassFlowRateByPressure(nodePressure[node.name])), 1e-8)
+                        # 非 PQ 曲线源节点，用 massFlow 属性回退，避免 RuntimeError
+                        try:
+                            q_signed = float(node.getMassFlowRateByPressure(nodePressure[node.name]))
+                        except RuntimeError:
+                            q_signed = float(getattr(node, 'massFlow', 0.0) or 0.0)
                     else:
                         if len(outflowConn) == 1:
-                            massFlowRate = max(float(sumMassFlowRate), 1e-8)
+                            q_signed = float(sumMassFlowRate)
                         else:
-                            massFlowRate = max(float(connFlowRate[neighborConn.name]), 1e-8)
+                            q_signed = float(connFlowRate.get(neighborConn.name, 1e-8))
+
+                    massFlowRate = max(abs(q_signed), 1e-8)  # calculateProfile 只接受正值
 
                     if isinstance(neighborConn, FlowLine):
+                        # 根据流量符号确定实际上游端（支持环形管网反向流）
+                        if q_signed >= 0:
+                            # 正向流：当前节点 → flowDirection[1]
+                            calc_direction = neighborConn.flowDirection
+                            calc_fluid = node.fluid
+                            calc_pressure = node.pressure
+                            calc_temperature = node.temperature
+                        else:
+                            # 反向流：实际从 flowDirection[1] → flowDirection[0]，上游是对端
+                            other_name = neighborConn.flowDirection[1]
+                            other_node = self.networkNodesDict.get(other_name)
+                            calc_direction = (neighborConn.flowDirection[1], neighborConn.flowDirection[0])
+                            other_fluid = getattr(other_node, 'fluid', None) if other_node else None
+                            if other_fluid is not None and not isinstance(other_fluid, str):
+                                calc_fluid = other_fluid
+                                calc_pressure = nodePressure.get(other_name, node.pressure)
+                                calc_temperature = getattr(other_node, 'temperature', node.temperature)
+                            else:
+                                # 对端尚未计算，退回当前节点属性
+                                calc_fluid = node.fluid
+                                calc_pressure = node.pressure
+                                calc_temperature = node.temperature
+
+                        # 检查 calc_fluid 是有效的 Fluid 对象，而非字符串标识符或 None
+                        if calc_fluid is None or isinstance(calc_fluid, str):
+                            print(f"[WARN updateFluidParam] node={node.name} fluid not initialized "
+                                  f"(fluid={calc_fluid!r}), skipping conn={neighborConn.name}")
+                            continue
+
                         try:
-                            neighborConn.flowlineSim.calculateProfile(node.fluid, massFlowRate,
-                                                                      node.pressure, node.temperature,
-                                                                      neighborConn.flowDirection)
-                        except (ValueError, ZeroDivisionError, FloatingPointError, OverflowError) as exc:
-                            raise type(exc)(
-                                f"{exc}; node={node.name}, conn={neighborConn.name}, "
-                                f"massFlowRate={massFlowRate}, pressure={node.pressure}, "
-                                f"temperature={node.temperature}, flowDirection={neighborConn.flowDirection}"
-                            ) from exc
+                            neighborConn.flowlineSim.calculateProfile(calc_fluid, massFlowRate,
+                                                                      calc_pressure, calc_temperature,
+                                                                      calc_direction)
+                        except Exception as exc:
+                            # 中间迭代点参数超出物理范围时 calculateProfile 可能失败，
+                            # 保留上一次的 Δp 缓存，不中断整个求解过程。
+                            print(f"[WARN updateFluidParam] calculateProfile failed: "
+                                  f"{type(exc).__name__}: {exc}; "
+                                  f"conn={neighborConn.name}, q={massFlowRate:.3e}, "
+                                  f"p={calc_pressure:.3e}, T={calc_temperature:.3f}, "
+                                  f"dir={calc_direction}")
             elif node.type == NodeType.THREE_PHASE_SEP:
                 #设备节点需要先计算设备对流体的作用，再计算各管道流体参数
                 pass

@@ -7,12 +7,17 @@ def Beggs_Brill_Holdup(ang, d, Qg, Ql, rho_l, rho_g, sigma_gl, Flow_Index):
     '''气体表观速度'''
     Vm = Vsl + Vsg
     '''混合物表观速度'''
-    NoSlip_Liquid_HoldUp = Vsl / (Vsg + Vsl)
+    # 防止纯气体（Vsl=0, Vsg=0）时 0/0 → ZeroDivisionError
+    NoSlip_Liquid_HoldUp = Vsl / max(Vsg + Vsl, 1e-10)
     ''' 无滑脱携液率 '''
     Froude_number = Vm * Vm / (9.8 * d)
     '''弗雷德数'''
-    NLv = Vsl * math.pow(rho_l / abs(sigma_gl) / 9.8, 0.25)
+    # 防止 sigma_gl=0 时 ZeroDivisionError
+    NLv = Vsl * math.pow(rho_l / max(abs(sigma_gl), 1e-10) / 9.8, 0.25)
     '''液相折算速度准数'''
+    # 防止 NoSlip_Liquid_HoldUp=0 (纯气) 或 NLv=0 导致 log 参数<=0 的 ValueError
+    NoSlip_Liquid_HoldUp = max(NoSlip_Liquid_HoldUp, 1e-10)
+    NLv = max(NLv, 1e-10)
     L1 = 316 * (NoSlip_Liquid_HoldUp ** 0.302)
     L2 = 0.0009252 * (NoSlip_Liquid_HoldUp ** -2.4684)
     L3 = 0.1 * (NoSlip_Liquid_HoldUp ** -1.4516)
@@ -142,15 +147,15 @@ def drift_flux_Holdup(ang, d, Qg, Ql, rho_l, rho_g, sigma_gl,Flow_Index):
     except :
         raise ValueError("sigma_gl不能为零")
 
-    # 检查N_d范围
-    if not (2 <= N_d <= 70):
-        raise ValueError(f"无量纲管道直径N_d={N_d:.2f}不在有效范围[2, 70]内")
-    else:
-        K_u = (1.0152e-5 * N_d ** 3 - 2.3396e-3 * N_d ** 2 + 8.085e-1 * N_d - 1.5934) / (1.9551e-1 * N_d + 1)
+    # 检查N_d范围：超出范围时夹紧而非抛异常，以免牛顿迭代中间步骤中止
+    N_d = max(2.0, min(70.0, N_d))
+    K_u = (1.0152e-5 * N_d ** 3 - 2.3396e-3 * N_d ** 2 + 8.085e-1 * N_d - 1.5934) / (1.9551e-1 * N_d + 1)
 
     # 计算临界速度V_c和气体泛点速度V_sgf
-    V_c = -((sigma_gl * g * (rho_l - rho_g) / (rho_l ** 2)) ** (1 / 4)) # 临界速度（米/秒）
-    V_sgf = K_u * math.sqrt(rho_l / rho_g) * V_c  # 气体泛点速度（米/秒）
+    # 使用 abs() 防止牛顿迭代中间步骤产生不合理参数（如 rho_g > rho_l）时 ** (1/4) 返回复数
+    _vc_inner = abs(sigma_gl * g * (rho_l - rho_g)) / max(rho_l ** 2, 1e-30)
+    V_c = -(_vc_inner ** (1 / 4))  # 临界速度（米/秒），约定为负
+    V_sgf = K_u * math.sqrt(abs(rho_l / max(rho_g, 1e-30))) * V_c  # 气体泛点速度（米/秒）
     # 计算无滑脱体积分数
     sum_q = Qg + Ql
     if sum_q == 0:
@@ -184,6 +189,11 @@ def drift_flux_Holdup(ang, d, Qg, Ql, rho_l, rho_g, sigma_gl,Flow_Index):
     tolerance = 1e-4
     H_g = H_g_0  # 初始化返回值
     beta_av = lambda_g
+    # 防止 V_sgf=0 (sigma_gl 极小或 rho_l≈rho_g) 时第一次迭代除零
+    # 退化为均质流：无滑脱持气/液率
+    if abs(V_sgf) < 1e-10:
+        return {"Hp_Slip_gas": lambda_g, "Hp_Slip_liquid": lambda_l}
+
     # Picard迭代求解持气率
     for _ in range(1000):
         # 计算beta和gamma
@@ -204,10 +214,14 @@ def drift_flux_Holdup(ang, d, Qg, Ql, rho_l, rho_g, sigma_gl,Flow_Index):
             K = K_low + (H_g_0 - a1) * (K_high - K_low) / (a2 - a1)
         # 计算漂移速度v_d
         numerator_vd = m_alpha * (1 - H_g_0 * C_0) * C_0 * K * V_c
-        denominator_vd = H_g_0 * C_0 * math.sqrt(rho_g / rho_l) + (1 - H_g_0 * C_0)
+        denominator_vd = H_g_0 * C_0 * math.sqrt(abs(rho_g / max(rho_l, 1e-30))) + (1 - H_g_0 * C_0)
         v_d = numerator_vd / denominator_vd
-        # 更新持气率估计值
-        H_g_new = (1 - f_0) * H_g_0 + f_0 * (v_sg / (v_d + C_0 * v_ms))
+        # 更新持气率估计值（防止漂移通量分母为零）
+        _denom_hg = v_d + C_0 * v_ms
+        if abs(_denom_hg) < 1e-10:
+            H_g_new = H_g_0
+        else:
+            H_g_new = (1 - f_0) * H_g_0 + f_0 * (v_sg / _denom_hg)
         # 检查收敛性
         error = abs(H_g_new - H_g_0)
         if error <= tolerance:
