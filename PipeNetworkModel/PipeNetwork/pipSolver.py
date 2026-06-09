@@ -586,12 +586,6 @@ class OriginalNetworkNewtonSolver(SingleNetworkNewtonSolver):
             # 无明确边界类型（或边界条件未设置）：退回父类默认PQ参数计算
             q = super()._source_injection(node_name, p_i)
 
-        # 应用产量约束（来自 network.dicRateConstraint）
-        rate_constraint = getattr(self.network, "dicRateConstraint", {}).get(node_name)
-        if rate_constraint is not None:
-            max_mass = self._as_float(getattr(rate_constraint, "max_mass", None), float("inf"))
-            if 0.0 < max_mass < float("inf"):
-                q = min(q, max_mass)
 
         return q
 
@@ -630,6 +624,17 @@ class OriginalNetworkNewtonSolver(SingleNetworkNewtonSolver):
         if injection is not None:
             bc["injection"].update(injection)
 
+        for node_name, node in self.network.networkNodesDict.items():
+            # 应用产量约束（来自 network.dicRateConstraint）
+            rate_constraint = getattr(self.network, "dicRateConstraint", {}).get(node_name)
+            if rate_constraint is not None:
+                max_mass = self._as_float(getattr(rate_constraint, "max_mass", None), float("inf"))
+                if 0.0 < max_mass < float("inf"):
+                    q = min(q, max_mass)
+            # 边界条件约束（来自 network.dicBoundaryConstraint)
+            boundary_constraint = getattr(self.network, "dicBoundaryConstraint", {}).get(node_name)
+            if boundary_constraint is not None:
+                print(boundary_constraint)
         missing_sinks = [
             name for name, node in self.network.networkNodesDict.items()
             if node.type == NodeType.SINK and name not in bc["pressure"]
