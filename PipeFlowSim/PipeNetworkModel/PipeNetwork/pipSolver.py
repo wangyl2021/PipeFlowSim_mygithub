@@ -171,7 +171,17 @@ class SingleNetworkNewtonSolver:
 
                 delta_p_model = conn.flowlineSim.getFlowlinePressureDrop()
 
-                F[F_idx] = p_from - p_to - delta_p_model
+                # 修正：根据实际流向（conn.flowDirection）判断压降方程符号。
+                # calculateProfile 始终从 flowDirection[0]（上游）侧计算到下游，
+                # 所以 delta_p_model = p_upstream - p_downstream（恒正）。
+                # 当流向与管道定义方向（conn.nodes）一致时：p_from - p_to = delta_p；
+                # 当流向与管道定义方向相反时：p_to - p_from = delta_p。
+                flow_from, _ = conn.flowDirection
+                if flow_from == n_from:
+                    F[F_idx] = p_from - p_to - delta_p_model
+                else:
+                    # 实际流向与管道定义方向相反
+                    F[F_idx] = p_to - p_from - delta_p_model
 
                 # R = getattr(conn, "resistance", 1e-0)  # 举例：如果没设置，就给个很小的阻力
                 # delta_p_model = R * q_e * abs(q_e)
@@ -298,3 +308,52 @@ class SingleNetworkNewtonSolver:
                 }
 
         return source_pq
+
+
+class PipeSubNetworkLevel1Solver:
+    """
+    一级子网（分支网络）求解器。
+    在接口节点（汇合节点）施加压力边界条件，调用 SingleNetworkNewtonSolver 求解，
+    然后返回接口节点流向二级网络的耦合注入量。
+
+    约定：q_iface > 0 表示流体从一级子网流向二级网络。
+    """
+
+    def __init__(self, network: NetworkModel):
+        self.network = network
+        self.newton_solver = SingleNetworkNewtonSolver(network)
+
+    def computeNetworkLevel1(self, pressure_bc: Dict[str, float]) -> Dict[str, float]:
+        """
+        以接口节点（汇合节点）的给定压力作为边界条件求解一级子网。
+
+        参数：
+            pressure_bc: {接口节点名: 固定压力值}
+
+        返回：
+            {接口节点名: 注入二级网络的流量}（正值表示从一级流向二级）
+        """
+        boundary_conditions = {
+            "pressure": pressure_bc,
+            "injection": {}
+        }
+        p, q = self.newton_solver.solve(boundary_conditions)
+
+        # 按 conn.nodes 约定统计接口节点的净流量：
+        # q_net = flow_in - flow_out（在一级子网内部视角）
+        # 对于典型一级子网（源节点 → 接口节点），接口节点全为流入，无流出：
+        #   q_net = sum(q_edge flowing INTO iface) > 0
+        # 该 q_net 即为注入二级网络的量（正 = 从一级注入二级）
+        q_iface: Dict[str, float] = {}
+        for iface_name in pressure_bc.keys():
+            flow_in = 0.0
+            flow_out = 0.0
+            for conn_name, conn in self.network.networkConnDict.items():
+                n_from, n_to = conn.nodes
+                q_e = q.get(conn_name, 0.0)
+                if n_to == iface_name:
+                    flow_in += q_e
+                if n_from == iface_name:
+                    flow_out += q_e
+            q_iface[iface_name] = flow_in - flow_out
+        return q_iface

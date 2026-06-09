@@ -446,15 +446,20 @@ class NetworkModel:
 
     def getNodesSortByDirection(self):
         """
-        对输入有向图进行节点排序，，满足所有 u→v 中 u 在 v 之前，返回节点name属性
+        对输入有向图进行节点排序，满足所有 u→v 中 u 在 v 之前，返回节点name属性。
+        环形管网在牛顿迭代过程中，基于压力更新流向后有向图可能出现环路，
+        此时退回到节点字典顺序作为兜底计算顺序。
         """
         self.networkGraph = self.updateGraph()
-        # 执行拓扑排序（返回节点ID列表，满足所有 u→v 中 u 在 v 之前）
-        topo_order = self.networkGraph.topological_sorting()
-        # print("拓扑排序结果（节点ID）:", topo_order)
+        try:
+            # 执行拓扑排序（返回节点ID列表，满足所有 u→v 中 u 在 v 之前）
+            topo_order = self.networkGraph.topological_sorting()
+        except Exception:
+            # 环形管网牛顿迭代中基于压力更新流向后可能出现有向环，
+            # 退回到节点字典顺序作为兜底计算顺序（不中断计算）
+            return list(self.networkNodesDict.values())
 
         named_order = [self.networkGraph.vs[vid]["name"] for vid in topo_order]
-        # print("拓扑排序结果（业务名称）:", named_order)
 
         nodesOrder=[]
         for nodeName in named_order:
@@ -473,6 +478,18 @@ class NetworkModel:
         for nodeName,node in self.networkNodesDict.items():
             if nodeName in convergingNodes:
                 node.isConvergingNode=True
+
+    @property
+    def convergingNodeSubNetwork(self) -> dict:
+        """
+        返回本子网中所有汇合节点（总度>2的节点）的字典，键为节点名，值为节点对象。
+        用于一级/二级子网之间的接口节点识别与耦合迭代。
+        """
+        return {
+            nodeName: node
+            for nodeName, node in self.networkNodesDict.items()
+            if getattr(node, 'isConvergingNode', False)
+        }
 
     def updateFlowDirectionByPressure(self,nodePressure:dict[str,float]):
         """
@@ -513,17 +530,26 @@ class NetworkModel:
             outflowConn=self.neighborNodesEdges[node]["outflowConn"]
 
             if node.type==NodeType.SOURCE:
-                if len(inflowConn)!=0 or len(outflowConn)==0:
-                    print(f'Cannot compute pipeline pressure drop,A source node "{node.name}"  must have outgoing edges, but must not have incoming edges.')
+                if len(inflowConn)==0 and len(outflowConn)==0:
+                    print(f'Cannot compute pipeline pressure drop, source node "{node.name}" has no connections.')
                     return False
+                # 环形管网/牛顿迭代时，源节点可能因压力反转出现流入边或无流出边，跳过该节点即可
+                if len(outflowConn)==0:
+                    continue
             elif node.type==NodeType.SINK:
-                if len(inflowConn)==0 or len(outflowConn)!=0:
-                    print(f'Cannot compute pipeline pressure drop,A sink node "{node.name}"  must have incoming edges, but must not have outgoing edges.')
+                if len(inflowConn)==0 and len(outflowConn)==0:
+                    print(f'Cannot compute pipeline pressure drop, sink node "{node.name}" has no connections.')
                     return False
+                # 环形管网/牛顿迭代时，汇节点可能因压力反转出现无流入边，跳过
+                if len(inflowConn)==0:
+                    continue
             else:
-                if len(inflowConn)==0 or len(outflowConn)== 0:
-                    print(f'Cannot compute pipeline pressure drop,internal node "{node.name}"  must have both incoming edges and outgoing edges')
+                # 中间节点（JUNCTION）
+                if len(inflowConn)==0 and len(outflowConn)==0:
+                    print(f'Cannot compute pipeline pressure drop, internal node "{node.name}" has no connections')
                     return False
+                # 环形管网/二级子网中，接口节点可能无流入边（来自一级子网注入）
+                # 或因压力方向更新而暂时全为流入/流出，均属正常，不中断计算
 
             lstFluids=[]
             sumMassFlowRate=0

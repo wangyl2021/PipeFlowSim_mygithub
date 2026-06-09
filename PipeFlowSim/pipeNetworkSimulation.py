@@ -14,6 +14,10 @@ class PipeNetworkSimulation:
     def __init__(self):
         self.originalNetworkModel:NetworkModel
         '''原始管网对象'''
+        self.subNetworkModelLevel1: dict[str, NetworkModel] = {}
+        '''一级子网络字典，键为子网名称，值为 NetworkModel 对象'''
+        self.subNetworkModelLevel2: dict[str, NetworkModel] = {}
+        '''二级子网络字典，键为子网名称，值为 NetworkModel 对象'''
 
 
     def readNetworkFromFile(self,excelPath:str)->NetworkModel:
@@ -462,6 +466,33 @@ class PipeNetworkSimulation:
             lstProfileBranch.append({"branch":connName})
         return lstNodesResult,dict(),lstProfileBranch,lstProfileResult
 
+    def _igraph_subgraph_to_network_model(self, subgraph, sub_name: str, level) -> NetworkModel:
+        """
+        将 igraph 子图转换为 NetworkModel 对象，复用原始管网中的节点和边对象。
+        子网络不重新初始化流向（流向继承自原始管网的计算结果）。
+
+        参数：
+            subgraph: igraph 子图对象（含 name 属性的节点和边）
+            sub_name: 子网络名称
+            level:    NetworkLevel.LEVEL_1 或 NetworkLevel.LEVEL_2
+        返回：
+            NetworkModel 对象
+        """
+        node_names = subgraph.vs["name"]
+        edge_names = subgraph.es["name"] if "name" in subgraph.es.attributes() else []
+
+        nodes = [
+            self.originalNetworkModel.networkNodesDict[name]
+            for name in node_names
+            if name in self.originalNetworkModel.networkNodesDict
+        ]
+        conns = [
+            self.originalNetworkModel.networkConnDict[name]
+            for name in edge_names
+            if name in self.originalNetworkModel.networkConnDict
+        ]
+        return NetworkModel(sub_name, nodes, conns, enNetworkLevel=level)
+
     def readSimulatedResultFromJson(self):
 
         with open("./DB/模拟结果参数字段v2.json", 'r', encoding='utf-8') as f:
@@ -491,9 +522,57 @@ class PipeNetworkSimulation:
 
         self.originalNetworkModel.meshConnGrid(gridLength)
 
+        # ---- 图分割：根据原始管网拓扑构建一级和二级子网络 ----
+        graphOper = GraphOperation()
+        sinkNodeNames = [
+            name for name, node in self.originalNetworkModel.networkNodesDict.items()
+            if node.type == NodeType.SINK
+        ]
+        level1_subgraphs, level2_subgraphs = graphOper.split_directed_graph_2to1(
+            self.originalNetworkModel.networkGraph, sinkNodeNames
+        )
+
+        self.subNetworkModelLevel1 = {}
+        self.subNetworkModelLevel2 = {}
+
+        for subgraph in level1_subgraphs:
+            sub_name = subgraph["subGraphName"]
+            sub_model = self._igraph_subgraph_to_network_model(
+                subgraph, sub_name, NetworkLevel.LEVEL_1
+            )
+            self.subNetworkModelLevel1[sub_name] = sub_model
+
+        for subgraph in level2_subgraphs:
+            sub_name = subgraph["subGraphName"]
+            sub_model = self._igraph_subgraph_to_network_model(
+                subgraph, sub_name, NetworkLevel.LEVEL_2
+            )
+            self.subNetworkModelLevel2[sub_name] = sub_model
+
         # *************************牛顿求解算法**********************************************************
-        pipeNetworkSolve =PipeNetworkSolve(self.originalNetworkModel, self.subNetworkModelLevel1, self.subNetworkModelLevel2)
-        pipeNetworkSolve.solve()
+        if self.subNetworkModelLevel1 and self.subNetworkModelLevel2:
+            # 存在分支结构：使用两级迭代耦合求解（适用于含汇合节点的复杂/环形管网）
+            pipeNetworkSolve = PipeNetworkSolve(
+                self.originalNetworkModel,
+                self.subNetworkModelLevel1,
+                self.subNetworkModelLevel2
+            )
+            pipeNetworkSolve.solve()
+        else:
+            # 无分支结构（简单树形管网）：直接对整体网络进行单网络牛顿求解
+            from PipeNetworkModel.PipeNetwork.pipSolver import SingleNetworkNewtonSolver
+            solver = SingleNetworkNewtonSolver(self.originalNetworkModel)
+            sink_p = {
+                name: 7e5
+                for name, node in self.originalNetworkModel.networkNodesDict.items()
+                if node.type == NodeType.SINK
+            }
+            boundary_conditions = {"pressure": sink_p, "injection": {}}
+            p_sol, q_sol = solver.solve(boundary_conditions)
+            # 将求解结果回写到节点压力
+            for node_name, pressure in p_sol.items():
+                if node_name in self.originalNetworkModel.networkNodesDict:
+                    self.originalNetworkModel.networkNodesDict[node_name].pressure = pressure
         # *************************牛顿求解算法**********************************************************
 
         #*************************二分求解，仅三节点管网可求，不需要删除，注释即可**********************************************************
